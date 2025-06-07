@@ -503,7 +503,11 @@ class FeedbackUI(QMainWindow):
         brand_layout.addStretch(1)
         main_layout.addLayout(brand_layout)
 
-        # --- Context Information Section (if provided) - MOVED TO TOP ---
+        # --- Context Information and Prompt Section (Side by Side) ---
+        # Create horizontal layout for context and prompt panels
+        context_prompt_layout = QHBoxLayout()
+
+        # --- Context Information Section (Left Panel - 50% width) ---
         if self.context_info and self.context_info.strip():
             context_group = QGroupBox(self.tr("项目上下文信息"))
             context_layout = QVBoxLayout(context_group)
@@ -551,9 +555,12 @@ class FeedbackUI(QMainWindow):
             """)
 
             context_layout.addWidget(context_scroll_area)
-            main_layout.addWidget(context_group)
+            context_prompt_layout.addWidget(context_group)  # Add to horizontal layout
 
-        # --- Prompt Section with Scroll Area ---
+        # --- Prompt Section (Right Panel - 50% width) ---
+        prompt_group = QGroupBox(self.tr("AI 摘要信息"))
+        prompt_layout = QVBoxLayout(prompt_group)
+
         # Create a scroll area for the prompt
         prompt_scroll_area = QScrollArea()
         prompt_scroll_area.setWidgetResizable(True)
@@ -596,85 +603,11 @@ class FeedbackUI(QMainWindow):
             }}
         """)
 
-        main_layout.addWidget(prompt_scroll_area)
+        prompt_layout.addWidget(prompt_scroll_area)
+        context_prompt_layout.addWidget(prompt_group)  # Add to horizontal layout
 
-        # --- Feedback Text Input Section ---
-        self.feedback_text = FeedbackTextEdit()
-        self.feedback_text.setPlaceholderText(self.tr("请在此输入您的反馈... (支持粘贴图片，可使用下方的'优化提示词'按钮增强您的输入)"))
-
-        # Connect image pasted signal if image upload is enabled
-        if self.enable_image_upload:
-            self.feedback_text.image_pasted.connect(self._on_image_pasted_to_text)
-
-        # Remove right padding since button is no longer embedded
-        self.feedback_text.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {INPUT_BACKGROUND_COLOR};
-                color: {TEXT_COLOR_PRIMARY};
-                border: 1px solid {BORDER_COLOR};
-                border-radius: 5px;
-                padding: 5px;
-            }}
-            QTextEdit:focus {{
-                border: 1px solid {INPUT_FOCUS_BORDER_COLOR};
-            }}
-        """)
-
-        main_layout.addWidget(self.feedback_text)
-
-        # --- Enhancement Button Section (centered below text input) ---
-        enhance_button_layout = QHBoxLayout()
-        enhance_button_layout.addStretch(1)  # Center the button
-
-        # Create the enhancement button
-        self.enhance_prompt_button = QPushButton()
-        self.enhance_prompt_button.setToolTip(self.tr("优化提示词 - 将简单想法转化为详细、结构化的描述"))
-
-        # Set up the magic icon and text
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        magic_icon_path = os.path.join(script_dir, "assets", "magic.svg")
-
-        if os.path.exists(magic_icon_path):
-            enhance_icon = QIcon(magic_icon_path)
-            self.enhance_prompt_button.setIcon(enhance_icon)
-            self.enhance_prompt_button.setText("优化提示词")  # Renamed for clarity
-        else:
-            self.enhance_prompt_button.setText("✨ 优化提示词")  # Fallback with emoji and text
-
-        # Style the button as rounded rectangle with text
-        self.enhance_prompt_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {THEME_COLOR};
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 16px;
-                font-size: {FONT_SIZE_MEDIUM};
-                font-weight: bold;
-                min-width: 100px;
-                height: 32px;
-            }}
-            QPushButton:hover {{
-                background-color: {HOVER_COLOR};
-            }}
-            QPushButton:pressed {{
-                background-color: {PRESSED_COLOR};
-            }}
-        """)
-
-        # Set appropriate size for the button with longer text
-        self.enhance_prompt_button.setFixedSize(120, 32)
-
-        # Connect button click to handler
-        self.enhance_prompt_button.clicked.connect(self._handle_enhance_prompt)
-
-        # Add button to layout with centering and then to main layout
-        enhance_button_layout.addWidget(self.enhance_prompt_button)
-        enhance_button_layout.addStretch(1)  # Center the button
-
-        # Add some spacing around the button area
-        enhance_button_layout.setContentsMargins(20, 10, 20, 10)
-        main_layout.addLayout(enhance_button_layout)
+        # Add the horizontal layout to main layout
+        main_layout.addLayout(context_prompt_layout)
 
         # --- Image Upload Section (conditionally added) ---
         if self.enable_image_upload:
@@ -686,8 +619,8 @@ class FeedbackUI(QMainWindow):
             self.image_scroll_area.setWidgetResizable(True)
             self.image_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self.image_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.image_scroll_area.setMaximumHeight(200)
-            self.image_scroll_area.setMinimumHeight(100)
+            self.image_scroll_area.setMaximumHeight(300)  # Increased from 200 to 300
+            self.image_scroll_area.setMinimumHeight(150)  # Increased from 100 to 150
 
             # Create widget to hold the grid layout for image previews
             self.image_preview_widget = QWidget()
@@ -743,7 +676,7 @@ class FeedbackUI(QMainWindow):
             # Initialize preview area
             self._refresh_previews()
 
-        # --- Predefined Options Section (if any) ---
+        # --- Predefined Options Section (Third Row) ---
         if self.predefined_options:
             options_group = QGroupBox(self.tr("预设选项"))
             options_layout = QVBoxLayout(options_group)
@@ -756,7 +689,7 @@ class FeedbackUI(QMainWindow):
 
             main_layout.addWidget(options_group)
 
-        # --- Session Control Section ---
+        # --- Session Control Section (Fourth Row) ---
         session_control_group = QGroupBox(self.tr("会话控制"))
         session_control_layout = QHBoxLayout(session_control_group)
 
@@ -771,6 +704,101 @@ class FeedbackUI(QMainWindow):
         session_control_layout.addStretch(1)
 
         main_layout.addWidget(session_control_group)
+
+        # --- Feedback Text Input Section with Embedded Button (Fifth Row) ---
+        # Create a container widget for the text input and button
+        feedback_container = QWidget()
+        feedback_container_layout = QVBoxLayout(feedback_container)
+        feedback_container_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create the text input
+        self.feedback_text = FeedbackTextEdit()
+        self.feedback_text.setPlaceholderText(self.tr("请在此输入您的反馈... (支持粘贴图片，点击右上角魔法图标优化提示词)"))
+
+        # Connect image pasted signal if image upload is enabled
+        if self.enable_image_upload:
+            self.feedback_text.image_pasted.connect(self._on_image_pasted_to_text)
+
+        # Set reduced height (1/2 of original) and styling with padding for button
+        self.feedback_text.setMaximumHeight(100)  # Reduced height to about 1/2
+        self.feedback_text.setMinimumHeight(60)   # Set minimum height
+        self.feedback_text.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {INPUT_BACKGROUND_COLOR};
+                color: {TEXT_COLOR_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 5px;
+                padding: 5px 40px 5px 5px;  /* Add right padding for button */
+                font-size: {FONT_SIZE_MEDIUM};
+            }}
+            QTextEdit:focus {{
+                border: 1px solid {INPUT_FOCUS_BORDER_COLOR};
+            }}
+        """)
+
+        # Create the enhancement button (icon only)
+        self.enhance_prompt_button = QPushButton(feedback_container)
+        self.enhance_prompt_button.setToolTip(self.tr("优化提示词 - 将简单想法转化为详细、结构化的描述"))
+
+        # Set up the magic icon only (no text)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        magic_icon_path = os.path.join(script_dir, "assets", "magic.svg")
+
+        if os.path.exists(magic_icon_path):
+            enhance_icon = QIcon(magic_icon_path)
+            self.enhance_prompt_button.setIcon(enhance_icon)
+            self.enhance_prompt_button.setText("")  # No text, icon only
+        else:
+            self.enhance_prompt_button.setText("✨")  # Fallback with emoji only
+
+        # Style the button with black background
+        self.enhance_prompt_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {THEME_COLOR};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 12px;
+                padding: 4px;
+                width: 24px;
+                height: 24px;
+            }}
+            QPushButton:hover {{
+                background-color: {HOVER_COLOR};
+                border: 1px solid {TEXT_COLOR_SECONDARY};
+            }}
+            QPushButton:pressed {{
+                background-color: {PRESSED_COLOR};
+            }}
+        """)
+
+        # Set button size and position it in the top-right corner of text input
+        self.enhance_prompt_button.setFixedSize(24, 24)
+
+        # Connect button click to handler
+        self.enhance_prompt_button.clicked.connect(self._handle_enhance_prompt)
+
+        # Add text input to container
+        feedback_container_layout.addWidget(self.feedback_text)
+
+        # Position the button in the top-right corner using absolute positioning
+        def position_button():
+            button_x = self.feedback_text.width() - self.enhance_prompt_button.width() - 10
+            button_y = 5  # Move button higher up
+            self.enhance_prompt_button.move(button_x, button_y)
+            self.enhance_prompt_button.raise_()  # Bring button to front
+
+        # Connect resize event to reposition button
+        original_resize_event = self.feedback_text.resizeEvent
+        def on_feedback_resize(event):
+            original_resize_event(event)  # Call original resize event first
+            if event:
+                position_button()
+
+        self.feedback_text.resizeEvent = on_feedback_resize
+
+        # Initial positioning
+        QTimer.singleShot(0, position_button)
+
+        main_layout.addWidget(feedback_container)
 
         # --- Submit Button Section ---
         submit_button_layout = QHBoxLayout()
@@ -841,6 +869,11 @@ class FeedbackUI(QMainWindow):
             # Create frame for each image thumbnail
             image_frame = QFrame()
             image_frame.setFrameStyle(QFrame.Box)
+
+            # Set fixed width for image frames to ensure 1/3 width when single image
+            frame_width = 200  # Fixed width for each image frame
+            image_frame.setFixedWidth(frame_width)
+
             image_frame.setStyleSheet(f"""
                 QFrame {{
                     border: 1px solid {BORDER_COLOR};
