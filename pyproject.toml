@@ -1,6 +1,6 @@
 [project]
 name = "interactive-feedback-magic"
-version = "0.1.1"
+version = "0.2.1"
 description = "Enhanced MCP server for interactive user feedback with minor improvements. Based on the excellent work by Fábio Ferreira and Pau Oliva."
 readme = "README.md"
 requires-python = ">=3.11"

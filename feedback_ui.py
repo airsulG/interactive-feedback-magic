@@ -80,7 +80,7 @@ except ImportError:
         PromptEnhancementWidget = None
 
 # Feature flag for image upload functionality
-ENABLE_IMAGE_UPLOAD = False  # Disabled - temporarily removed image upload module
+ENABLE_IMAGE_UPLOAD = True  # Enabled - integrated clipboard paste and file upload functionality
 
 # Define the theme color and stylesheet
 # Original THEME_COLOR = "#007bff"
@@ -88,8 +88,8 @@ ENABLE_IMAGE_UPLOAD = False  # Disabled - temporarily removed image upload modul
 # Original PRESSED_COLOR = "#004085"
 
 # New black theme for checkbox to align with overall B&W style
-CHECKBOX_CHECKED_COLOR = "#000000"            # Black background for checked state
-CHECKBOX_CHECKED_HOVER_COLOR = "#1A1A1A"       # Dark gray for hover on checked state (same as button hover)
+CHECKBOX_CHECKED_COLOR = "#2BBE6C"            # Green background for checked state
+CHECKBOX_CHECKED_HOVER_COLOR = "#26a360"       # Darker green for hover on checked state
 
 # New theme for black and white style
 THEME_COLOR = "#000000"                 # Main theme color for buttons (black)
@@ -234,14 +234,14 @@ QRadioButton::indicator:unchecked:hover {{
 }}
 
 QRadioButton::indicator:checked {{
-    background-color: {THEME_COLOR}; /* Or any other distinct color for checked */
-    border: 1px solid {THEME_COLOR};
+    background-color: {CHECKBOX_CHECKED_COLOR};
+    border: 1px solid {CHECKBOX_CHECKED_COLOR};
     image: url(assets/checkbox_check.svg); /* Use checkbox_check.svg for radio button as well */
 }}
 
 QRadioButton::indicator:checked:hover {{
-    background-color: {HOVER_COLOR};
-    border: 1px solid {HOVER_COLOR};
+    background-color: {CHECKBOX_CHECKED_HOVER_COLOR};
+    border: 1px solid {CHECKBOX_CHECKED_HOVER_COLOR};
 }}
 
 QLabel#imagePreviewLabel {{
@@ -290,9 +290,24 @@ def get_dark_mode_palette(app: QApplication):
     return darkPalette
 
 class FeedbackTextEdit(QTextEdit):
+    # 图片处理常量
+    DEFAULT_MAX_IMAGE_WIDTH = 1624
+    DEFAULT_MAX_IMAGE_HEIGHT = 1624
+    DEFAULT_IMAGE_FORMAT = "PNG"
+
+    # 定义类级别的信号
+    image_pasted = Signal(QPixmap)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.enhance_button = None
+        self.image_data = []   # 保存图片的Base64数据列表
+        # 获取设备的像素比例
+        self.device_pixel_ratio = QApplication.primaryScreen().devicePixelRatio()
+        # 图片压缩参数
+        self.max_image_width = self.DEFAULT_MAX_IMAGE_WIDTH  # 最大宽度
+        self.max_image_height = self.DEFAULT_MAX_IMAGE_HEIGHT  # 最大高度
+        self.image_format = self.DEFAULT_IMAGE_FORMAT  # 图片格式
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
@@ -305,33 +320,125 @@ class FeedbackTextEdit(QTextEdit):
         else:
             super().keyPressEvent(event)
 
+    def _convert_image_to_base64(self, image):
+        """将图片转换为 Base64 编码字符串"""
+        try:
+            # 将图片转换为QPixmap
+            if not isinstance(image, QPixmap):
+                pixmap = QPixmap.fromImage(image)
+            else:
+                pixmap = image
+
+            # 创建字节缓冲区
+            buffer = QBuffer()
+            buffer.open(QIODevice.WriteOnly)
+
+            pixmap.save(buffer, self.image_format)
+            file_extension = self.image_format.lower()  # 使用小写的格式名作为扩展名
+
+            # 获取字节数据并转换为base64
+            byte_array = buffer.data()
+            base64_string = base64.b64encode(byte_array).decode('utf-8')
+            buffer.close()
+
+            # 返回Base64数据和文件扩展名
+            return {
+                'data': base64_string,
+                'extension': file_extension
+            }
+        except Exception as e:
+            print(f"转换图片为Base64时出错: {e}")
+            return None
+
+    def insertFromMimeData(self, source_data):
+        """
+        Handle pasting from mime data, explicitly checking for image data.
+        支持视网膜屏幕(Retina Display)的高DPI显示
+        """
+        try:
+            if source_data.hasImage():
+                # If the mime data contains an image, convert to Base64
+                image = source_data.imageData()
+                if image:
+                    try:
+                        # 使用原始图片，不进行压缩
+                        # 转换图片为Base64编码
+                        image_result = self._convert_image_to_base64(image)
+
+                        if image_result:
+                            # 生成唯一的文件名用于标识
+                            import datetime
+                            import uuid
+                            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                            unique_id = str(uuid.uuid4())[:8]
+                            filename = f"pasted_image_{timestamp}_{unique_id}.{image_result['extension']}"
+
+                            # 保存Base64数据
+                            image_info = {
+                                'base64': image_result['data'],
+                                'filename': filename
+                            }
+                            self.image_data.append(image_info)
+
+                            # 发出信号，通知上层组件有新图片被粘贴
+                            if isinstance(image, QPixmap):
+                                pixmap = image
+                            else:
+                                pixmap = QPixmap.fromImage(image)
+                            self.image_pasted.emit(pixmap)
+
+                    except Exception as e:
+                        print(f"处理图片时出错: {e}")
+                        cursor = self.textCursor()
+                        cursor.insertText(f"[图片处理失败: {str(e)}]")
+                else:
+                    cursor = self.textCursor()
+                    cursor.insertText("[图片处理失败: 无效的图片数据]")
+            elif source_data.hasHtml():
+                # If the mime data contains HTML, insert it as HTML
+                super().insertFromMimeData(source_data)
+            elif source_data.hasText():
+                # If the mime data contains plain text, insert it as plain text
+                super().insertFromMimeData(source_data)
+            else:
+                # For other types, call the base class method
+                super().insertFromMimeData(source_data)
+        except Exception as e:
+            print(f"处理粘贴内容时出错: {e}")
+            # 尝试使用基类方法处理
+            try:
+                super().insertFromMimeData(source_data)
+            except:
+                cursor = self.textCursor()
+                cursor.insertText(f"[粘贴内容失败: {str(e)}]")
+
+    def get_image_data(self):
+        """返回图片数据列表（包含Base64编码）"""
+        return self.image_data.copy()
+
     def resizeEvent(self, event):
         """处理窗口大小变化事件"""
         if event:  # Only call super if event is not None
             super().resizeEvent(event)
 
 class FeedbackUI(QMainWindow):
-    def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None, enable_image_upload: bool = ENABLE_IMAGE_UPLOAD, context_info: str = ""):
+    def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None, context_info: str = ""):
         super().__init__()
         self.prompt = prompt
         self.predefined_options = predefined_options or []
-        self.enable_image_upload = enable_image_upload
+        # 图片上传功能完全由内部控制，基于 ENABLE_IMAGE_UPLOAD 常量
+        self.enable_image_upload = ENABLE_IMAGE_UPLOAD
         self.context_info = context_info
         self.image_payloads: List[ImagePayload] = [] # For storing list of {"bytesBase64Encoded": "...", "mimeType": "..."}
 
         self.feedback_result = None
         
-        self.setWindowTitle("Interactive Feedback MCP")
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        icon_path = os.path.join(script_dir, "images", "feedback.png")
-        self.setWindowIcon(QIcon(icon_path))
-        
-        # Apply modern look and feel
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        # self.setWindowOpacity(0.95) # Commented out due to readability concerns
-        
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        
+        self.setWindowTitle("Developer Feedback")
+        self.setGeometry(100, 100, 800, 750)
+
+        # Set a consistent dark background for the main window
+        self.setStyleSheet(f"QMainWindow {{ background-color: {BACKGROUND_COLOR}; }}")
+
         self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
         
         # Load general UI settings for the main window (geometry, state)
@@ -493,7 +600,11 @@ class FeedbackUI(QMainWindow):
 
         # --- Feedback Text Input Section ---
         self.feedback_text = FeedbackTextEdit()
-        self.feedback_text.setPlaceholderText(self.tr("请在此输入您的反馈... (可使用下方的'优化提示词'按钮增强您的输入)"))
+        self.feedback_text.setPlaceholderText(self.tr("请在此输入您的反馈... (支持粘贴图片，可使用下方的'优化提示词'按钮增强您的输入)"))
+
+        # Connect image pasted signal if image upload is enabled
+        if self.enable_image_upload:
+            self.feedback_text.image_pasted.connect(self._on_image_pasted_to_text)
 
         # Remove right padding since button is no longer embedded
         self.feedback_text.setStyleSheet(f"""
@@ -611,7 +722,7 @@ class FeedbackUI(QMainWindow):
             image_upload_layout.addWidget(self.image_scroll_area)
 
             # Add instruction label
-            self.instruction_label = QLabel(self.tr("可粘贴图片到窗口或点击下方按钮上传多张图片"))
+            self.instruction_label = QLabel(self.tr("可粘贴图片到文本框或拖拽到此区域，也可点击下方按钮选择文件上传"))
             self.instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.instruction_label.setStyleSheet(f"color: {TEXT_COLOR_SECONDARY}; font-size: {FONT_SIZE_SMALL}; margin: 5px;")
             image_upload_layout.addWidget(self.instruction_label)
@@ -794,7 +905,7 @@ class FeedbackUI(QMainWindow):
                     background-color: #bd2130;
                 }}
             """)
-            delete_button.clicked.connect(lambda checked, idx=index: self._handle_remove_image(idx))
+            delete_button.clicked.connect(lambda checked=False, idx=index: self._handle_remove_image(idx))
             frame_layout.addWidget(delete_button)
 
             # Add frame to grid layout
@@ -809,6 +920,42 @@ class FeedbackUI(QMainWindow):
         if 0 <= image_index < len(self.image_payloads):
             self.image_payloads.pop(image_index)
             self._refresh_previews()
+
+    def _on_image_pasted_to_text(self, pixmap):
+        """处理从文本框粘贴的图片"""
+        # 将QPixmap转换为QImage
+        qimage = pixmap.toImage()
+        if not qimage.isNull():
+            # 使用统一的图片添加方法
+            self._add_image_from_qimage(qimage, "pasted_image")
+
+    def _add_image_from_qimage(self, qimage: QImage, source_name: str = "image"):
+        """从QImage添加图片到payloads列表"""
+        try:
+            # 转换为Base64
+            buffer = QBuffer()
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+
+            # 保存为PNG格式以保持质量
+            if not qimage.save(buffer, "PNG"):
+                print("Error: Could not save image to buffer.")
+                return
+
+            image_bytes = buffer.data()
+            base64_encoded_data = base64.b64encode(image_bytes).decode('utf-8')
+
+            # 创建图片载荷
+            new_payload = {
+                "bytesBase64Encoded": base64_encoded_data,
+                "mimeType": "image/png"
+            }
+            self.image_payloads.append(new_payload)
+
+            # 刷新预览
+            self._refresh_previews()
+
+        except Exception as e:
+            print(f"添加图片时出错: {e}")
 
     def _stream_enhance_text(self, original_text: str):
         """
@@ -832,8 +979,6 @@ class FeedbackUI(QMainWindow):
             from prompt_enhancer import enhance_prompt_with_gemini
             result = enhance_prompt_with_gemini(original_text, self.context_info)
             yield result
-
-
 
     def _submit_feedback(self):
         feedback_text = self.feedback_text.toPlainText().strip()
@@ -859,6 +1004,20 @@ class FeedbackUI(QMainWindow):
             
         # Join with a newline if both parts exist
         final_feedback = "\n\n".join(final_feedback_parts)
+
+        # 路径识别与替换
+        import re
+        def format_paths(text):
+            parts = re.split(r'(\s+)', text)
+            for i, part in enumerate(parts):
+                if not (part is None or re.match(r'^\s*$', part)): # if it's not a whitespace part
+                    if ('/' in part or '\\' in part) and not (part.startswith('http://') or part.startswith('https://')):
+                        # 避免重复格式化
+                        if not part.startswith('用户提供文件路径："') and not part.startswith('用户提供文件路径："'):
+                            parts[i] = f'用户提供文件路径："{part}"'
+            return "".join(parts)
+        
+        final_feedback = format_paths(final_feedback)
             
         # Determine session control value
         session_control_value = "continue" # Default to continue, as per new UI default
@@ -874,7 +1033,20 @@ class FeedbackUI(QMainWindow):
         }
         # Always include images list if image upload is enabled
         if self.enable_image_upload:
-            result_dict["images"] = self.image_payloads
+            # 合并来自文件上传和文本框粘贴的图片
+            all_images = self.image_payloads.copy()
+
+            # 添加来自文本框粘贴的图片
+            text_images = self.feedback_text.get_image_data()
+            for img_data in text_images:
+                # 转换格式以匹配现有结构
+                image_payload = {
+                    "bytesBase64Encoded": img_data['base64'],
+                    "mimeType": f"image/{img_data.get('extension', 'png')}"
+                }
+                all_images.append(image_payload)
+
+            result_dict["images"] = all_images
 
         # Cast to FeedbackResult for type hinting, though it's a dict at runtime for JSON
         self.feedback_result = FeedbackResult(**result_dict)
@@ -1001,31 +1173,9 @@ class FeedbackUI(QMainWindow):
         return "image/png" # Default if undetectable, PNG is a good lossless default
 
     def _add_image_payload(self, qimage: QImage, file_path: Optional[str] = None):
-        buffer = QBuffer()
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        # Save to buffer, choose a format. PNG is good for lossless.
-        # If original format is known and preferred, use that.
-        # For simplicity, let's try to save as PNG if possible, or JPEG for larger images.
-        # Determine preferred format for saving to buffer
-        mime_type = self._determine_mime_type(qimage, file_path)
-        save_format = mime_type.split('/')[-1].upper() # PNG, JPEG etc.
-
-        if not qimage.save(buffer, save_format if save_format in ["PNG", "JPEG", "BMP"] else "PNG"):
-            # Fallback if preferred format fails (e.g. saving GIF animation as static PNG)
-            if not qimage.save(buffer, "PNG"):
-                print("Error: Could not save image to buffer.")
-                self._handle_clear_image() # Clear if processing fails
-                return
-            mime_type = "image/png" # Update mime_type if fallback occurred
-
-        image_bytes = buffer.data()
-        base64_encoded_data = base64.b64encode(image_bytes).decode('utf-8')
-        # Add the new image payload to the list instead of overwriting
-        new_payload = {"bytesBase64Encoded": base64_encoded_data, "mimeType": mime_type}
-        self.image_payloads.append(new_payload)
-
-        # Refresh the preview area to show all images
-        self._refresh_previews()
+        """添加图片载荷（从文件上传）"""
+        # 使用统一的图片添加方法
+        self._add_image_from_qimage(qimage, file_path or "uploaded_image")
 
     def _handle_clear_image(self):
         self.image_payloads.clear()  # Clear the list of image payloads
@@ -1043,11 +1193,11 @@ class FeedbackUI(QMainWindow):
                     return
         super().keyPressEvent(event) # Pass to children like FeedbackTextEdit if not handled
 
-def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None, enable_image_upload: bool = ENABLE_IMAGE_UPLOAD, context_info: str = "") -> Optional[FeedbackResult]:
+def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None, context_info: str = "") -> Optional[FeedbackResult]:
     app = QApplication.instance() or QApplication()
     app.setPalette(get_dark_mode_palette(app))
     app.setStyle("Fusion")
-    ui = FeedbackUI(prompt, predefined_options, enable_image_upload, context_info)
+    ui = FeedbackUI(prompt, predefined_options, context_info)
     result = ui.run()
 
     if output_file and result:
@@ -1065,16 +1215,19 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", default="I implemented the changes you requested.", help="The prompt to show to the user")
     parser.add_argument("--predefined-options", default="", help="Pipe-separated list of predefined options (|||)")
     parser.add_argument("--output-file", help="Path to save the feedback result as JSON")
-    parser.add_argument("--disable-image-upload", action="store_true", help="Explicitly disable image upload functionality (already disabled by default)")
+    # 图片上传功能由 ENABLE_IMAGE_UPLOAD 常量控制，不再通过命令行参数
     parser.add_argument("--context-info", default="", help="Context information including project goals, current progress, tech stack, etc.")
     args = parser.parse_args()
 
     predefined_options = [opt for opt in args.predefined_options.split("|||") if opt] if args.predefined_options else None
 
-    # Image upload is disabled by default due to ENABLE_IMAGE_UPLOAD = False
-    # Only enable if explicitly requested (but currently not supported)
-    enable_image_upload = ENABLE_IMAGE_UPLOAD and not args.disable_image_upload
-    result = feedback_ui(args.prompt, predefined_options, args.output_file, enable_image_upload, args.context_info)
+    # 图片上传功能完全由 FeedbackUI 内部的 ENABLE_IMAGE_UPLOAD 常量控制
+    result = feedback_ui(
+        prompt=args.prompt,
+        predefined_options=predefined_options,
+        output_file=args.output_file,
+        context_info=args.context_info
+    )
     if result:
         print(f"\nFeedback received:\n{result['interactive_feedback']}")
     sys.exit(0)

@@ -30,11 +30,20 @@ import sys
 import json
 import tempfile
 import subprocess
-from typing import Dict, List, Optional
+import base64
+import io
+from typing import Dict, List, Optional, Tuple
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Image
 from pydantic import Field
 from mcp.types import TextContent
+
+try:
+    from PIL import Image as PILImage
+except ImportError:
+    # 提供一个替代方案或明确的错误信息
+    # 这样即使没有安装Pillow，服务器也能启动，只是工具不可用
+    PILImage = None
 
 # FastMCP 服务器实例
 # 注意: log_level="ERROR" 是为了兼容 Cline 客户端的要求
@@ -66,28 +75,57 @@ def debug_log(message: str) -> None:
         pass
 
 # === 图片处理功能 ===
-# 注意: 图片上传功能已暂时禁用，为未来扩展预留
+# 重新启用图片处理功能，整合剪贴板粘贴和文件上传
 #
-# 设计考虑:
-# - 安全性: 避免处理恶意图片文件
-# - 性能: 减少内存占用和传输开销
-# - 兼容性: 确保在所有 MCP 客户端中稳定运行
-#
-# def process_images(images_data: List[Dict[str, str]]) -> List[Image]:
-#     """
-#     将包含多个图片载荷（base64编码）的列表转换为 MCP Image 对象列表
-#
-#     Args:
-#         images_data: 包含 base64 编码图片数据的字典列表
-#
-#     Returns:
-#         转换后的 MCP Image 对象列表
-#
-#     Note:
-#         此功能已暂时禁用，等待未来版本重新启用
-#     """
-#     debug_log("图片处理功能已禁用 - 为安全性和稳定性考虑")
-#     return []
+# 功能特性:
+# - 支持剪贴板粘贴图片
+# - 支持文件选择上传
+# - Base64编码传输，简化处理流程
+# - 统一的图片数据格式
+
+def process_images(images_data: List[Dict[str, str]]) -> List[Image]:
+    """
+    将包含多个图片载荷（base64编码）的列表转换为 MCP Image 对象列表
+
+    Args:
+        images_data: 包含 base64 编码图片数据的字典列表
+                    格式: [{"bytesBase64Encoded": "...", "mimeType": "image/png"}, ...]
+
+    Returns:
+        转换后的 MCP Image 对象列表
+
+    Note:
+        支持剪贴板粘贴和文件上传的图片处理
+    """
+    debug_log(f"开始处理 {len(images_data)} 张图片")
+    images = []
+
+    for i, image_data in enumerate(images_data):
+        try:
+            # 获取Base64编码的图片数据
+            b64_data = image_data.get("bytesBase64Encoded", "")
+            mime_type = image_data.get("mimeType", "image/png")
+
+            if not b64_data:
+                debug_log(f"图片 {i+1}: Base64数据为空，跳过")
+                continue
+
+            # 解码Base64数据
+            img_bytes = base64.b64decode(b64_data)
+            debug_log(f"图片 {i+1}: 解码成功，大小 {len(img_bytes)} bytes，类型 {mime_type}")
+
+            # 创建MCP Image对象
+            # 从mime_type提取格式（如 "image/png" -> "png"）
+            format_str = mime_type.split('/')[-1] if '/' in mime_type else "png"
+            image = Image(data=img_bytes, format=format_str)
+            images.append(image)
+
+        except Exception as e:
+            debug_log(f"图片 {i+1} 处理失败: {e}")
+            continue
+
+    debug_log(f"成功处理 {len(images)} 张图片")
+    return images
 
 def launch_feedback_ui(
     summary: str,
@@ -147,8 +185,8 @@ def launch_feedback_ui(
             "--prompt", summary,
             "--output-file", output_file,
             "--predefined-options", "|||".join(predefinedOptions) if predefinedOptions else "",
-            "--context-info", context_info if context_info else "",
-            "--disable-image-upload"  # 禁用图片上传功能
+            "--context-info", context_info if context_info else ""
+            # 图片上传功能已启用，无需禁用参数
         ]
         debug_log(f"启动 UI 进程，参数数量: {len(args)}")
 
@@ -156,15 +194,25 @@ def launch_feedback_ui(
             args,
             check=False,
             shell=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
-            close_fds=True
+            close_fds=True,
+            text=True
         )
         debug_log(f"UI 进程退出，返回码: {result.returncode}")
 
+        # 记录标准输出和错误输出
+        if result.stdout:
+            debug_log(f"UI 进程标准输出: {result.stdout}")
+        if result.stderr:
+            debug_log(f"UI 进程错误输出: {result.stderr}")
+
         if result.returncode != 0:
-            raise Exception(f"Failed to launch feedback UI: {result.returncode}")
+            error_msg = f"Failed to launch feedback UI: {result.returncode}"
+            if result.stderr:
+                error_msg += f"\nError output: {result.stderr}"
+            raise Exception(error_msg)
 
         # Read the result from the temporary file
         debug_log(f"读取结果文件: {output_file}")
@@ -194,13 +242,13 @@ def launch_feedback_ui(
             debug_log("清理临时文件")
             os.unlink(output_file)
         raise e
-
+    
 @mcp.tool()
 def interactive_feedback(
     message: str = Field(description="The specific question for the user"),
     predefined_options: list = Field(default=None, description="Predefined options for the user to choose from (optional)"),
     context_info: str = Field(default="", description="Context information including project goals, current progress, tech stack, etc. (optional)"),
-):
+) -> Tuple[str | Image, ...]:
     """
     交互式反馈工具 - MCP 核心工具
 
@@ -246,6 +294,7 @@ def interactive_feedback(
     # Create text content for the feedback
     text_feedback = result.get("interactive_feedback", "")
     session_control = result.get("session_control", "continue")
+    images_data = result.get("images", [])
 
     # 构建完整的反馈文本，包含会话控制信息
     full_feedback_text = text_feedback
@@ -253,20 +302,32 @@ def interactive_feedback(
         full_feedback_text += f"\n\n[会话控制: {session_control}]"
 
     debug_log(f"文本反馈长度: {len(full_feedback_text)}")
+    debug_log(f"接收到图片数量: {len(images_data)}")
 
-    # 图片处理功能已禁用，跳过图片相关逻辑
-    debug_log("图片处理功能已禁用，跳过图片处理")
+    # 处理图片数据
+    images = process_images(images_data) if images_data else []
+    debug_log(f"成功处理图片数量: {len(images)}")
 
-    # Create a TextContent object to wrap the text feedback
-    text_content = TextContent(type="text", text=full_feedback_text)
-    debug_log(f"创建文本内容: 类型={type(text_content)}, 长度={len(full_feedback_text)}")
-
-    # Return only text content since image upload is disabled
-    result_list = [text_content]
-    debug_log("返回 1 个文本内容项（图片功能已禁用）")
-
+    # 根据返回的实际内容组装结果
     debug_log("用户反馈处理完成")
-    return result_list
+
+    if full_feedback_text and images:
+        # 有文本和图片
+        result_tuple = (full_feedback_text, *images)
+        debug_log(f"返回文本+图片: 1个文本 + {len(images)}张图片")
+        return result_tuple
+    elif full_feedback_text:
+        # 只有文本
+        debug_log("返回纯文本反馈")
+        return (full_feedback_text,)
+    elif images:
+        # 只有图片
+        debug_log(f"返回纯图片: {len(images)}张图片")
+        return tuple(images)
+    else:
+        # 空反馈
+        debug_log("返回空反馈")
+        return ("",)
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
