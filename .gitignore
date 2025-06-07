@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv*/
+venv*/
+
+# Logs
+*.log
+
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+secrets.json
+config.json
+
+# 文档管理
+docs/
+!docs/06-开发计划/000｜开发清单.md
+
+# 测试文件
+tests/
+#Others
+.DS_Store
+uv.lock
+
+.cursor/rules/

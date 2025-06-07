@@ -1,0 +1,13 @@
+[project]
+name = "interactive-feedback-magic"
+version = "0.1.1"
+description = "Enhanced MCP server for interactive user feedback with minor improvements. Based on the excellent work by Fábio Ferreira and Pau Oliva."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "psutil>=7.0.0",
+    "pyside6>=6.8.2.1",
+    "google-genai>=0.5.0",
+    "mcp>=1.9.1",
+]
