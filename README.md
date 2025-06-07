@@ -1,6 +1,4 @@
 # 🗣️ Interactive Feedback Magic
-
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![简体中文](https://img.shields.io/badge/lang-简体中文-red.svg)](README_CN.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://python.org)
 [![MCP](https://img.shields.io/badge/MCP-compatible-orange.svg)](https://modelcontextprotocol.io/)
@@ -28,32 +26,12 @@
 
 在 Cursor 等环境中，每次发送给 LLM 的提示都被视为独立请求，计入你的月度限额（如 500 次高级请求）。当你需要迭代模糊的指令或纠正误解的输出时，每次后续澄清都会触发新的完整请求，这变得非常低效。
 
-**原项目的核心价值**：
+**项目核心价值**：
 - 🛑 **暂停并澄清**：模型可以暂停并请求澄清，而不是基于猜测完成请求
 - 💰 **节省 API 调用**：避免浪费昂贵的 API 调用生成基于猜测的代码
 - ✅ **减少错误**：在行动前澄清，意味着更少的错误代码和浪费的时间
 - ⏱️ **更快的迭代**：快速确认胜过调试错误的猜测
 - 🎮 **更好的协作**：将单向指令转变为对话，让你保持控制
-
-## 🛠️ 技术架构
-
-### 基于原项目的小幅改进
-本项目基于 [interactive-feedback-mcp](https://github.com/poliva/interactive-feedback-mcp) 进行了一些小的调整：
-
-**🎨 界面方面的调整**
-- 尝试优化了一些界面元素的显示
-- 添加了中文界面支持
-- 调整了部分布局和样式
-
-**⚡ 功能方面的补充**
-- 尝试集成 Google Gemini API 用于提示词优化
-- 增加了项目上下文信息的传递
-- 添加了一些辅助功能
-
-**📋 文档和代码**
-- 添加了中文注释和文档
-- 整理了项目结构
-- 补充了使用说明
 
 ## 📦 安装指南
 
@@ -216,5 +194,3 @@ python feedback_ui.py --prompt "测试消息"
 - 查看原项目 [interactive-feedback-mcp](https://github.com/poliva/interactive-feedback-mcp) 获取更多文档
 
 ---
-
-**让 AI 助手更智能，让开发更高效！** 🚀
