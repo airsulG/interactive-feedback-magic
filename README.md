@@ -177,7 +177,11 @@ interactive-feedback-magic/
 uv sync
 
 # 运行服务器
+# 使用默认 stdio 运行服务器
 python server.py
+
+# 使用 TCP 模式（示例）
+python server.py --transport tcp --port 8000
 
 # 测试 UI
 python feedback_ui.py --prompt "测试消息"

@@ -330,4 +330,32 @@ def interactive_feedback(
         return ("",)
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the Interactive Feedback MCP server"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "tcp"],
+        default="stdio",
+        help="Transport type for the MCP server",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host address when using TCP transport",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=65432,
+        help="Port number when using TCP transport",
+    )
+
+    args = parser.parse_args()
+
+    if args.transport == "tcp":
+        mcp.run(transport="tcp", host=args.host, port=args.port)
+    else:
+        mcp.run(transport="stdio")
