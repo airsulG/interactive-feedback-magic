@@ -509,8 +509,74 @@ class FeedbackUI(QMainWindow):
 
         # --- Context Information Section (Left Panel - 50% width) ---
         if self.context_info and self.context_info.strip():
-            context_group = QGroupBox(self.tr("项目上下文信息"))
+            context_group = QGroupBox()
             context_layout = QVBoxLayout(context_group)
+
+            # Create custom title bar with copy button (same as AI summary)
+            context_title_container = QWidget()
+            context_title_layout = QHBoxLayout(context_title_container)
+            context_title_layout.setContentsMargins(10, 5, 10, 5)
+
+            # Title label
+            context_title_label = QLabel(self.tr("项目上下文信息"))
+            context_title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {TEXT_COLOR_SECONDARY};
+                    font-size: {FONT_SIZE_MEDIUM};
+                    font-weight: bold;
+                    margin: 0px;
+                    padding: 0px;
+                }}
+            """)
+            context_title_layout.addWidget(context_title_label)
+
+            # Add stretch to push copy button to the right
+            context_title_layout.addStretch(1)
+
+            # Create copy button for context
+            self.copy_context_button = QPushButton(context_title_container)
+            self.copy_context_button.setToolTip(self.tr("复制项目上下文信息到剪贴板"))
+
+            # Set up the copy icon
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            copy_icon_path = os.path.join(script_dir, "assets", "复制.svg")
+
+            if os.path.exists(copy_icon_path):
+                copy_icon = QIcon(copy_icon_path)
+                self.copy_context_button.setIcon(copy_icon)
+                self.copy_context_button.setText("")  # No text, icon only
+            else:
+                self.copy_context_button.setText("📋")  # Fallback with emoji
+
+            # Style the copy button to match other buttons
+            self.copy_context_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {THEME_COLOR};
+                    border: 1px solid {BORDER_COLOR};
+                    border-radius: 12px;
+                    padding: 4px;
+                    width: 24px;
+                    height: 24px;
+                }}
+                QPushButton:hover {{
+                    background-color: {HOVER_COLOR};
+                    border: 1px solid {TEXT_COLOR_SECONDARY};
+                }}
+                QPushButton:pressed {{
+                    background-color: {PRESSED_COLOR};
+                }}
+            """)
+
+            # Set button size
+            self.copy_context_button.setFixedSize(24, 24)
+
+            # Connect button click to handler
+            self.copy_context_button.clicked.connect(self._handle_copy_context)
+
+            context_title_layout.addWidget(self.copy_context_button)
+
+            # Add title container to context layout
+            context_layout.addWidget(context_title_container)
 
             # Create a scroll area for the context info
             context_scroll_area = QScrollArea()
@@ -558,8 +624,74 @@ class FeedbackUI(QMainWindow):
             context_prompt_layout.addWidget(context_group)  # Add to horizontal layout
 
         # --- Prompt Section (Right Panel - 50% width) ---
-        prompt_group = QGroupBox(self.tr("AI 摘要信息"))
+        prompt_group = QGroupBox()
         prompt_layout = QVBoxLayout(prompt_group)
+
+        # Create custom title bar with copy button
+        title_container = QWidget()
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(10, 5, 10, 5)
+
+        # Title label
+        title_label = QLabel(self.tr("AI 摘要信息"))
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_COLOR_SECONDARY};
+                font-size: {FONT_SIZE_MEDIUM};
+                font-weight: bold;
+                margin: 0px;
+                padding: 0px;
+            }}
+        """)
+        title_layout.addWidget(title_label)
+
+        # Add stretch to push copy button to the right
+        title_layout.addStretch(1)
+
+        # Create copy button
+        self.copy_summary_button = QPushButton(title_container)
+        self.copy_summary_button.setToolTip(self.tr("复制 AI 摘要内容到剪贴板"))
+
+        # Set up the copy icon
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        copy_icon_path = os.path.join(script_dir, "assets", "复制.svg")
+
+        if os.path.exists(copy_icon_path):
+            copy_icon = QIcon(copy_icon_path)
+            self.copy_summary_button.setIcon(copy_icon)
+            self.copy_summary_button.setText("")  # No text, icon only
+        else:
+            self.copy_summary_button.setText("📋")  # Fallback with emoji
+
+        # Style the copy button to match the enhance button
+        self.copy_summary_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {THEME_COLOR};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 12px;
+                padding: 4px;
+                width: 24px;
+                height: 24px;
+            }}
+            QPushButton:hover {{
+                background-color: {HOVER_COLOR};
+                border: 1px solid {TEXT_COLOR_SECONDARY};
+            }}
+            QPushButton:pressed {{
+                background-color: {PRESSED_COLOR};
+            }}
+        """)
+
+        # Set button size
+        self.copy_summary_button.setFixedSize(24, 24)
+
+        # Connect button click to handler
+        self.copy_summary_button.clicked.connect(self._handle_copy_summary)
+
+        title_layout.addWidget(self.copy_summary_button)
+
+        # Add title container to prompt layout
+        prompt_layout.addWidget(title_container)
 
         # Create a scroll area for the prompt
         prompt_scroll_area = QScrollArea()
@@ -1084,6 +1216,54 @@ class FeedbackUI(QMainWindow):
         # Cast to FeedbackResult for type hinting, though it's a dict at runtime for JSON
         self.feedback_result = FeedbackResult(**result_dict)
         self.close()
+
+    def _handle_copy_context(self):
+        """处理复制项目上下文信息按钮点击事件"""
+        try:
+            # 获取剪贴板
+            clipboard = QApplication.clipboard()
+
+            # 复制原始的完整上下文信息（未过滤的）
+            clipboard.setText(self.context_info)
+
+            # 显示成功提示
+            QMessageBox.information(
+                self,
+                self.tr("复制成功"),
+                self.tr("项目上下文信息已复制到剪贴板！")
+            )
+
+        except Exception as e:
+            # 错误处理
+            QMessageBox.warning(
+                self,
+                self.tr("复制失败"),
+                self.tr(f"复制过程中发生错误：{str(e)}")
+            )
+
+    def _handle_copy_summary(self):
+        """处理复制摘要按钮点击事件"""
+        try:
+            # 获取剪贴板
+            clipboard = QApplication.clipboard()
+
+            # 复制原始的完整摘要内容（未过滤的）
+            clipboard.setText(self.prompt)
+
+            # 显示成功提示
+            QMessageBox.information(
+                self,
+                self.tr("复制成功"),
+                self.tr("AI 摘要内容已复制到剪贴板！")
+            )
+
+        except Exception as e:
+            # 错误处理
+            QMessageBox.warning(
+                self,
+                self.tr("复制失败"),
+                self.tr(f"复制过程中发生错误：{str(e)}")
+            )
 
     def _handle_enhance_prompt(self):
         """处理提示词增强按钮点击事件"""
